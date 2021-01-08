@@ -1,0 +1,119 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 1" isGlobal="true" uiName="Custom Attribute 1"/>
+            <staticAttribute agentPluginName="Custom Attribute 2" isGlobal="true" uiName="Custom Attribute 2"/>
+            <staticAttribute agentPluginName="Custom Attribute 3" isGlobal="true" uiName="Custom Attribute 3"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="86400000" invokeWhenNotReporting="true" reportingFrequency="86400000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="20000"/>
+            <Parameter name="ScriptContext" value="System"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[<#
+.Synopsis
+	Aternity - Custom Data: Retrieve build and warranty date information.
+.DESCRIPTION
+	Retrieve machine build and warranty end date information for Lenovo devices by query Lenovo SaaS API.
+	
+	References:
+	* https://www.aternity.com
+	* https://sccmguru.wordpress.com/2019/01/15/gather-lenovo-warranty-information-with-powershell/
+
+.EXAMPLE
+	Deploy in Aternity (Monitors -> Custom Monitor) 
+	Description: Return the build and warranty dates for any Lenovo manufactured PCs.
+#>
+
+try
+{
+	# Load Agent Module
+	Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+
+	# Describe Lenovo API connectivity
+    $url = "https://ibase.lenovo.com/POIRequest.aspx"
+    $method = "POST"
+    $header = @{ "Content-Type" = "application/x-www-form-urlencoded" }
+
+	# Retrieve Manufacturer and Serial No. from local device.
+    $sysInfo = Get-WmiObject -Class Win32_BIOS | Select-Object -Property Manufacturer,SerialNumber
+
+    $manufacturer = $sysInfo.Manufacturer
+    $serialNumber = $sysInfo.SerialNumber
+
+	# Confirm device is manufactured by Lenovo before calling API.
+    if ($manufacturer -like "LENOVO") {
+
+		# Construct XML request with device serial number.
+        $body = "xml=<wiInputForm source='ibase'><id>LSC3</id><pw>IBA4LSC3</pw><product></product><serial>$serialNumber</serial><wiOptions><machine/><parts/><service/><upma/><entitle/></wiOptions></wiInputForm>"
+
+		# Make request of Lenovo API and store response XML.
+        $response = Invoke-RestMethod -Method $method -Uri $url -Body $body -Headers $header
+
+		# Extract interesting information from response XML and tweak dates for readability 
+        $pcModel = $response.wiOutputForm.warrantyInfo.machineInfo.productName
+        $pcBuildDate = Get-Date -format d-MMM-yyyy $response.wiOutputForm.warrantyInfo.machineInfo.buildDate
+        $pcWarrantyEnd = Get-Date -format d-MMM-yyyy $response.wiOutputForm.warrantyInfo.serviceInfo.wed[0]
+        $battWarrantyEnd = Get-Date -format d-MMM-yyyy $response.wiOutputForm.warrantyInfo.serviceInfo.wed[1]
+
+		# Do some quick checks to determine if warranty is active, expiring soon (less than 30 days from now) or expired,
+		# and add that to the data sent back to Aternity.
+		# We can use (Active), (Expiring Soon), and (Expired) to trigger the Service Desk Checklist item from Green to Amber to Red.
+		if ([DateTime]$pcWarrantyEnd -lt (Get-Date).Date) {
+			$pcWarrantyState = "$pcWarrantyEnd (Expired)"
+		}
+		elseif (([DateTime]$pcWarrantyEnd -ge (Get-Date).Date) -and ([DateTime]$pcWarrantyEnd -lt (Get-Date).Date.AddDays(30))) {
+			$pcWarrantyState = "$pcWarrantyEnd (Expiring Soon)"
+		}
+        else {
+			$pcWarrantyState = "$pcWarrantyEnd (Active)"
+		}
+		
+		if ([DateTime]$battWarrantyEnd -lt (Get-Date).Date) {
+			$battWarrantyState = "$battWarrantyEnd (Expired)"
+		}
+		elseif (([DateTime]$battWarrantyEnd -ge (Get-Date).Date) -and ([DateTime]$battWarrantyEnd -lt (Get-Date).Date.AddDays(30))) {
+			$battWarrantyState = "$battWarrantyEnd (Expiring Soon)"
+		}
+        else {
+			$battWarrantyState = "$battWarrantyEnd (Active)"
+		}
+
+        #Write-Output "Manufacturer: $manufacturer"
+        #Write-Output "Model: $pcModel"
+        #Write-Output "Serial No.: $serialNumber"
+        #Write-Output "PC Manfactured: $pcBuildDate"
+        #Write-Output "PC Warranty End Date: $pcWarrantyState"
+        #Write-Output "Battery Warranty End Date: $battWarrantyState"
+
+		# Assign the output to Aternity Custom Attributes and send back to the SaaS platform.
+        [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 1",$pcBuildDate)
+		[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 2",$pcWarrantyState)
+        [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 3",$battWarrantyState)
+
+    }
+    else {
+        #Write-Output "Not a Lenovo device!"
+    }
+
+
+#Set Output message
+[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("EventOccurred",0)
+
+}
+catch
+{
+	[ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

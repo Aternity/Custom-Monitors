@@ -1,0 +1,108 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 1" isGlobal="true" uiName="Custom Attribute 1"/>
+            <staticAttribute agentPluginName="Custom Attribute 2" isGlobal="true" uiName="Custom Attribute 2"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="3600000" invokeWhenNotReporting="true" reportingFrequency="3600000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="20000"/>
+            <Parameter name="ScriptContext" value="System"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[<#
+.Synopsis
+	Aternity - Custom Data: Detect USB docking stations.
+.DESCRIPTION
+	Identify USB docking station based on lookup match and report make/model and connected state.
+	
+	References:
+	* https://www.aternity.com
+	* https://download.lenovo.com/cdrt/wp/usb-docks.html - Lenovo USB device IDs for ThinkPad docking stations.
+	
+.EXAMPLE
+	Deploy in Aternity (Monitors -> Custom Monitor) 
+	Description: Return the Docking Station Model and Connected State of all matched devices
+#>
+
+try
+{
+	# Load Agent Module
+	Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+
+	# Define details for deployed docking stations.
+	$dockList = @(
+		@('ThinkPad Thunderbolt 3 Essential Dock (40AV)', @('VID_17EF&PID_3082','VID_17EF&PID_3092&MI_00') ),
+		@('ThinkPad Thunderbolt 3 Workstation Dock (40AN)', @('VID_17EF&PID_3082','VID_17EF&PID_3083') ),
+		@('ThinkPad Thunderbolt 3 Dock (40AC)', @('VID_17EF&PID_3069','VID_17EF&PID_306A') ),
+		@('ThinkPad Hybrid USB-C with USB-A Dock (40AF)', @('VID_17EF&PID_A359','VID_17EF&PID_6015|VID_17E9&PID_6015') ),
+		@('ThinkPad USB-C Dock Gen 2 (40AS)', @('VID_17EF&PID_A387','VID_17EF&PID_A396') ),
+		@('ThinkPad USB-C Dock (40A9)', @('VID_17EF&PID_3062','VID_17EF&PID_3063') ),
+		@('ThinkPad OneLink+ Dock (40A4)', @('VID_17EF&PID_3054','VID_17EF&PID_3055') ),
+		@('ThinkPad OneLink Pro Dock (4X10)', @('VID_17EF&PID_304F','VID_17EF&PID_304E') ),
+		@('ThinkPad USB 3.0 Ultra Dock (40A8)', @('VID_17EF&PID_4340&REV_0101') ),
+		@('ThinkPad USB 3.0 Pro Dock (40A7)', @('VID_17EF&PID_433F&REV_0101') ),
+		@('ThinkPad USB 3.0 Basic Dock (40AA)', @('VID_17EF&PID_431F&MI_05','VID_17EF&PID_431F&MI_02','VID_17EF&PID_431F&MI_00') )
+		)
+
+	#Query CIM and get a list of connected USB devices.
+	$usbDeviceList = Get-CimInstance -Namespace ROOT\CIMv2 -ClassName Win32_PnpEntity | Select-Object DeviceID | Where-Object { ($_.DeviceID -Match "^USB\\VID_.*") }
+	$dockMatch = $false
+
+	#Loop through each entry in the dockList and check for matches in the usbDeviceList.
+	foreach ($_ in $dockList) {
+
+		$dockListName = $_[0]
+		$dockListPIDs = $_[1]
+
+		#Write-Host("Testing:") $dockListName
+		$dockPIDMatches = $dockListPIDs |? {$usbDeviceList -match $_}
+
+		#If all the PIDs in a dockList entry match then stop checking.
+		if (($dockPIDMatches -ne $null) -and -not(diff $dockPIDMatches $dockListPIDs)) {
+			$dockMatch = $true
+			break
+		}
+		#If a partial match occurs then raise it for diagnostic purposes.
+		elseif (($dockPIDMatches -ne $null) -and (diff $dockPIDMatches $dockListPIDs)) {
+			#Write-Host("Result: Partial match for") $dockName
+			#Write-Host("Matched")
+			#Write-Host("-------")
+			#$dockPIDMatches
+		}
+	}
+
+	#Report outcome with dockName is successful.
+	if ($dockMatch -eq $true) {
+		$dockName = $dockListName
+		$dockStatus = "Connected"
+		#Write-Host("Result: Successfully matched") $dockName
+		[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 1",$dockName)
+		[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 2",$dockStatus)
+	}
+	else {
+		$dockStatus = "Not Connected"
+		#Write-Host("Result: No dock found, or dock not connected")
+		[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 2",$dockStatus)
+	}
+
+	#Set Output message
+	[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("EventOccurred",0)
+
+}
+catch
+{
+	[ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+
+
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>
