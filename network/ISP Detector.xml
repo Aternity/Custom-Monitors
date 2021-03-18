@@ -1,0 +1,62 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 1" isGlobal="true" uiName="Custom Attribute 1"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="3600000" invokeWhenNotReporting="true" reportingFrequency="3600000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="10000"/>
+            <Parameter name="ScriptContext" value="System"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[<#
+.Synopsis
+	Aternity - Custom Data: Detect public IP then lookup ASN and ISP.
+.DESCRIPTION
+	Identify ISP and ASN from public IP.
+	
+	References:
+	* https://www.aternity.com
+    * https://https://team-cymru.com/community-services/ip-asn-mapping/
+    * https://ipify.org
+	
+.EXAMPLE
+	Deploy in Aternity (Monitors -> Custom Monitor) 
+	Description: Return the ISP and ASN based on the public IP.
+#>
+try
+{
+    # Load Agent Module
+    Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+
+    $myIP = Invoke-RestMethod -Method Get https://api.ipify.org
+    $octets = $myIP.Split(".")
+    $queryOrigin = $octets[3] + '.' + $octets[2] + '.' + $octets[1] + '.' + $octets[0] + '.origin.asn.cymru.com.'
+    $queryOriginResp = (Resolve-DnsName -Type TXT $queryOrigin).Strings.Split("|")
+    $queryASN = 'AS' + $queryOriginResp[0].trim() + '.asn.cymru.com.'
+    $queryASNResp = (Resolve-DnsName -Type TXT $queryASN).Strings.Split("|")
+    $asn = $queryASNResp[0].trim()
+    $isp = $queryASNResp[4].trim()
+    #Write-Output "My IP Address: $myip"
+    #Write-Output "BGP ASN: $asn"
+    #Write-Output "ISP: $isp"
+
+    $output = "$isp (AS$asn)"
+
+    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 1", $output)
+    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("EventOccurred",0)
+}
+catch
+{
+    [ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

@@ -1,0 +1,314 @@
+﻿<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 2" isGlobal="true" uiName="Custom Attribute 2"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="3600000" invokeWhenNotReporting="true" reportingFrequency="3600000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="90000"/>
+            <Parameter name="ScriptContext" value="System"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[<#
+.Synopsis
+	Aternity - Custom Data: Detect connected switch port through CDP and LLDP.
+.DESCRIPTION
+	Identify connected switch and port by reading CDP and LLDP packets.
+	
+	References:
+	* https://www.aternity.com
+    * https://www.powershellgallery.com/packages/PSDiscoveryProtocol/1.2.0
+	
+.EXAMPLE
+	Deploy in Aternity (Monitors -> Custom Monitor) 
+	Description: Return the connected switch details and port.
+#>
+
+try
+{
+	# Load Agent Module
+	Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+
+    # Set up some variables.
+    [string]$traceFile = "$env:temp\atnytrace.etl"
+    [string]$traceName = "atnycap01"
+    $traceFilter = @('01-00-0c-cc-cc-cc', '01-80-c2-00-00-0e', '01-80-c2-00-00-03', '01-80-c2-00-00-00')
+    $traceDuration = 61
+    [string]$device = ""
+    [string]$ipAddress = ""
+    [string]$port = ""
+    [string]$protocol = ""
+    [string]$output = "No discovery detail found."
+
+    # Set which protocol to look for
+    $packetType = "CDP"
+
+    # Find a wired LAN adapter and grab its details.
+    $Adapter = Get-NetAdapter -Physical | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceType -eq 6} | Select-Object -First 1 Name, MacAddress, ifIndex
+
+    # If we don't get any adapter details then skip to the end, otherwise continue to packet capture.
+    if ($Adapter) {
+        # Check for a currently configured capture session and remove if found.
+        if (Get-NetEventSession -Name $traceName -ErrorAction SilentlyContinue) {
+            Stop-NetEventSession -Name $traceName
+            Remove-NetEventSession -Name $traceName
+        }
+
+        # Set up a new capture session.
+        New-NetEventSession -Name $traceName -LocalFilePath $traceFile -CaptureMode SaveToFile -Maxfilesize 10
+        Add-NetEventPacketCaptureProvider -SessionName $traceName -TruncationLength 0 -CaptureType Physical -LinkLayerAddress $traceFilter
+        Add-NetEventNetworkAdapter -Name $Adapter.Name -PromiscuousMode $true
+
+        # Begin capturing packets.
+        Start-NetEventSession -Name $traceName
+
+        # Wait for the specified duration (CDP and LLDP packets are broadcast at 30 and 60 second intervals by default).
+        sleep $traceDuration
+
+        # Stop and remove the capture session - the tracefile will remain until we delete it later.
+        Stop-NetEventSession -Name $traceName
+        Remove-NetEventSession -Name $traceName
+
+        # Grab the local adapter interface as we use it to filter discovery packets sourced from our machine.
+        $MACAddress = [PhysicalAddress]::Parse($Adapter.MacAddress).ToString()
+
+        # Search the ETL trace file for event ID 1001 and then search the packet fragment for CDP and LLDP markers, and if we find any keep the last event.
+        [string]$output = "No discovery detail found."
+
+        # We can look for LLDP and CDP by using this Get-Event statement.
+
+        If ($packetType -eq "LLDP") {
+            write-output "LLDP"
+            $events = Get-WinEvent -Path $traceFile -Oldest | 
+                Where-Object { $_.Id -eq 1001 -and ([UInt16]0x88CC -eq [BitConverter]::ToUInt16($_.Properties[3].Value[13..12], 0)) -and $MACAddress -ne [PhysicalAddress]::new($_.Properties[3].Value[6..11]).tostring() }
+        } elseif ($packetType -eq "CDP") {
+            write-output "CDP"
+            $events = Get-WinEvent -Path $traceFile -Oldest | 
+                Where-Object { $_.Id -eq 1001 -and ([UInt16]0x2000 -eq [BitConverter]::ToUInt16($_.Properties[3].Value[21..20], 0)) }
+        } else {
+            write-output "Both"
+            $events = Get-WinEvent -Path $traceFile -Oldest | 
+                Where-Object { $_.Id -eq 1001 -and ([UInt16]0x2000 -eq [BitConverter]::ToUInt16($_.Properties[3].Value[21..20], 0) -or [UInt16]0x88CC -eq [BitConverter]::ToUInt16($_.Properties[3].Value[13..12], 0)) -and $MACAddress -ne [PhysicalAddress]::new($_.Properties[3].Value[6..11]).tostring() }
+        }
+
+        # Delete trace file.
+        #Remove-Item -Path $traceFile
+
+        # If we found an event containing a discovery then extract all the useful information to send up to Aternity.
+        if ($events) {
+            foreach ($event in $events) {
+                # Extract the packet fragment from the event to process.
+                $packet = ($event | Select-Object -ExpandProperty Properties)[3].value
+
+                # Assume we have a switch unless we prove otherwise.
+                $deviceIsSwitch = $true
+
+                # Determine if it's CDP or LLDP so we can perform the appropriate processing.
+                if ([UInt16]0x2000 -eq [BitConverter]::ToUInt16($packet[21..20], 0)) {
+                    #Write-Output "CDP"
+
+                    #$capabilities = @{1 = "Router" ; 2 = "Transparent Bridge" ; 4 = "Source Route Bridge" ; 8 = "Switch" ; 16 = "Host" ; 32 = "IGMP Capable" ; 64 = "Repeater"}
+
+                    $Offset = 26
+                    $Hash = @{}
+
+                    $Hash.Add('Protocol','CDP')
+
+                    while ($Offset -lt ($Packet.Length - 4) -and $deviceIsSwitch -eq $true) {
+
+                        $Type   = [BitConverter]::ToUInt16($Packet[($Offset + 1)..$Offset], 0)
+                        $Length = [BitConverter]::ToUInt16($Packet[($Offset + 3)..($Offset + 2)], 0)
+                                       
+                        switch ($Type)
+                        {
+                            # Check the CDP capability flags for binary 8 as this indicates the device is a switch - this should exclude IP Phone broadcasts.
+                            4  { $capability = [BitConverter]::ToUInt16($Packet[($Offset + 7)..($Offset + $length)], 0)
+                                if (-not (8 -band $capability)) {
+                                
+                                $deviceIsSwitch = $false
+                                break }
+                               }
+                            1  { $Hash.Add('Device',    [System.Text.Encoding]::ASCII.GetString($Packet[($Offset + 4)..($Offset + $Length)])) }
+                            2  { $Hash.Add('IPAddress', ([System.Net.IPAddress][byte[]]$Packet[($Offset + 13)..($Offset + 16)]).IPAddressToString) }
+                            3  { $Hash.Add('Port',      [System.Text.Encoding]::ASCII.GetString($Packet[($Offset + 4)..($Offset + $Length)])) }
+                            6  { $Hash.Add('Model',     [System.Text.Encoding]::ASCII.GetString($Packet[($Offset + 4)..($Offset + $Length)])) }
+                            10 { $Hash.Add('VLAN',      [BitConverter]::ToUInt16($Packet[($Offset + 5)..($Offset + 4)], 0)) }
+                        }
+
+                        if ($Length -eq 0 ) {
+                            $Offset = $Packet.Length
+                        }
+
+                    $Offset = $Offset + $Length
+
+                    }
+
+                }
+                elseif ([UInt16]0x88CC -eq [BitConverter]::ToUInt16($packet[13..12], 0)) {
+                    #write-output "LLDP"
+
+                    $Offset = 14
+                    $Mask = 0x01FF
+                    $Hash = @{}
+
+                    $Hash.Add('Protocol','LLDP')
+
+                    while ($Offset -lt $Packet.Length)
+                    {
+                        $Type = $Packet[$Offset] -shr 1
+                        $Length = [BitConverter]::ToUInt16($Packet[($Offset + 1)..$Offset], 0) -band $Mask
+                        $Offset += 2
+
+                        switch ($Type)
+                        {
+                            1 {
+                                # Chassis ID
+                                $Subtype = $Packet[$Offset]
+                                $Offset += 1
+                                $Length -= 1
+ 
+                                if ($Subtype -eq 4)
+                                {
+                                    $ChassisID = [PSCustomObject] @{
+                                        Type = 'MAC Address'
+                                        ID = [PhysicalAddress]::new($Packet[$Offset..($Offset + 5)])
+                                    }
+                                    $Offset += 6
+                                }
+
+                                if ($Subtype -eq 6)
+                                {
+                                    $ChassisID = [PSCustomObject] @{
+                                        Type = 'Interface Name'
+                                        ID = [System.Text.Encoding]::ASCII.GetString($Packet[$Offset..($Offset + $Length)])
+                                    }
+                                    $Offset += $Length
+                                }
+                                break
+                            }
+
+                            2 { 
+                                $Hash.Add('Port', [System.Text.Encoding]::ASCII.GetString($Packet[($Offset + 1)..($Offset + $Length - 1)]))
+                                $Offset += $Length
+                                break 
+                            }
+
+                            4 { 
+                                $Hash.Add('Description', [System.Text.Encoding]::ASCII.GetString($Packet[$Offset..($Offset + $Length - 1)]))
+                                $Offset += $Length
+                                break
+                            }
+
+                            5 { 
+                                $Hash.Add('Device', [System.Text.Encoding]::ASCII.GetString($Packet[$Offset..($Offset + $Length - 1)]))
+                                $Offset += $Length
+                                break
+                            }
+
+                            8 {
+                                $AddrLen = $Packet[($Offset)]
+                                $Subtype = $Packet[($Offset + 1)]
+
+                                if ($Subtype -eq 1)
+                                {
+                                    $Hash.Add('IPAddress', ([System.Net.IPAddress][byte[]]$Packet[($Offset + 2)..($Offset + $AddrLen)]).IPAddressToString)
+                                }
+                                $Offset += $Length
+                                break
+                            }
+
+                            127 {
+                                $OUI = [System.BitConverter]::ToString($Packet[($Offset)..($Offset + 2)])
+
+                                if ($OUI -eq '00-12-BB') {
+                                    $Subtype = $Packet[($Offset + 3)]
+                                    if ($Subtype -eq 10) {
+                                        $Hash.Add('Model', [System.Text.Encoding]::ASCII.GetString($Packet[($Offset + 4)..($Offset + $Length - 1)]))
+                                        $Offset += $Length
+                                        break
+                                    }
+                                }
+
+                                if ($OUI -eq '00-80-C2') {
+                                    $Subtype = $Packet[($Offset + 3)]
+                                    if ($Subtype -eq 1) {
+                                        $Hash.Add('VLAN', [BitConverter]::ToUInt16($Packet[($Offset + 5)..($Offset + 4)], 0))
+                                        $Offset += $Length
+                                        break
+                                    }
+                                }
+                
+                                $Tlv = [PSCustomObject] @{
+                                    Type = $Type
+                                    Value = [System.Text.Encoding]::ASCII.GetString($Packet[$Offset..($Offset + $Length)])
+                                }
+                                Write-Verbose $Tlv
+                                $Offset += $Length
+                                break
+                            }
+
+                            default {
+                                $Tlv = [PSCustomObject] @{
+                                    Type = $Type
+                                    Value = [System.Text.Encoding]::ASCII.GetString($Packet[$Offset..($Offset + $Length)])
+                                }
+                                Write-Verbose $Tlv
+                                $Offset += $Length
+                                break
+                            }
+                        }
+                    }
+
+
+                }
+                # Test that discovery details are present and the device is a switch.
+                if ($Hash -and $deviceIsSwitch -eq $true) {
+                        # Sanitise output by removing non-alphanumeric and punctuation characters, then trim any excess whitespace.
+                        $device = ([PSCustomObject]$Hash.Device -replace '[^a-zA-Z0-9\p{P}\p{S}]+', ' ').trim()
+                        $model = ([PSCustomObject]$Hash.Model -replace '[^a-zA-Z0-9\p{P}\p{S}]+', ' ').trim()
+                        $ipAddress = [PSCustomObject]$Hash.IPAddress 
+                        $port = ([PSCustomObject]$Hash.Port -replace '[^a-zA-Z0-9\p{P}\p{S}]+', ' ').trim()
+                        $protocol = [PSCustomObject]$Hash.Protocol
+
+                        # Try and build some useful output from the various attributes discovered - otherwise state only partial output found as a prompt to investigate further.
+                        if ($device -and $ipAddress -and $port -and $protocol) {
+                            $output = "$port on $device `($ipAddress`) via $protocol"
+                        } elseif ($device -and $port -and $protocol) {
+                            $output = "$port on $device via $protocol"
+                        } elseif ($ipAddress -and $port -and $protocol) {
+                            $output = "$port on $ipAddress via $protocol"
+                        } else {
+                            $output = "Partial discovery detail."
+                        }
+                 }
+
+            }
+ 
+        }
+    }
+    else {
+        # If we get here the user is probably on WiFi.
+        $output = "No wired NIC found."
+    }
+
+    #$output
+
+    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 2", $output)
+    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("EventOccurred",0)
+}
+catch
+{
+	[ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+
+
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>
