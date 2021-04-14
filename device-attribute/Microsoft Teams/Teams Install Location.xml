@@ -25,7 +25,7 @@
         $result += "Profile "
     }
     if (Test-Path -path  $systemwidelocation) {
-        $result = "System-wide"
+        $result += "System-wide"
     }
 
     if ($result.Length -le 1) {$result = "unknown"}
