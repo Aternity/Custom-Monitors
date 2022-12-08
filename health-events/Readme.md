@@ -42,6 +42,14 @@ Description of scripts or xml documents for retraival of custom data.
 	Description: Create a monitor under device health bucket to check for Pending Reboot Flag  	
 	Technology:	XML
 	Frequency: 	case by case bases, based on your use case. Change the setting of frequency under <AgentConfiguration> parameter
+###	No Recent Reboot Powershell Script
+	Description: Create a health event when a device has not been rebooted in 7 or 10 days.  Component field gives the threshold that is breached, so that different Service Desk Alerts (SDAs) can be configured for each threshold.  Suggested SDA actions would be to prompt the user if they would like to reboot after 7 days before forcibly rebooting after 10 days.
+	Technology:	Powershell Script
+	Frequency: 	Will be controlled at the monitor tree level inside XML
+###	No Recent Reboot Health Event Monitor XML
+	Description: Create a monitor under device health bucket to check whether there has been no recent reboot. 	
+	Technology:	XML
+	Frequency: 	case by case bases, based on your use case.  Suggested timeframe is daily (86400000 ms). Change the setting of frequency under <AgentConfiguration> parameter
 ###	Last AD Connection Health Event	Powershell Script
 	Description: Check when device was last connected to AD from Windows Event Logs and raise a health event if connection was more than 7 day ago  	
 	Technology:	Powershell Script
