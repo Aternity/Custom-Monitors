@@ -1,0 +1,61 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="DiskTransfer" maType="PluginMonitored1" uiName="Disk Transfer Rate" units="Number"/>
+            <monitoredAttribute agentPluginName="DiskRead" maType="PluginMonitored2" uiName="Disk Read Rate" units="Number"/>
+            <monitoredAttribute agentPluginName="DiskWrite" maType="PluginMonitored3" uiName="Disk Write Rate" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes/>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="60000" invokeWhenNotReporting="true" reportingFrequency="60000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="20000"/>
+            <Parameter name="ScriptContext" value="System"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[try
+{
+        # Set new environment for Action Extensions Methods 
+        Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+
+        # Collect the required Counters for .CounterSamples first value bring c:\ 
+
+        # Tasks to be completed
+            $task1 = { (Get-Counter -Counter '\LogicalDisk(c:)\Avg. Disk sec/Transfer').CounterSamples.CookedValue }
+            $task2 = { (Get-Counter -Counter '\LogicalDisk(c:)\Avg. Disk sec/Read').CounterSamples.CookedValue }
+            $task3 = { (Get-Counter -Counter '\LogicalDisk(c:)\Avg. Disk sec/Write').CounterSamples.CookedValue }
+ 
+        # Run tasks in the background
+            $job1 =  Start-Job -ScriptBlock $task1
+            $job2 =  Start-Job -ScriptBlock $task2
+            $job3 =  Start-Job -ScriptBlock $task3
+ 
+        # wait for the remaining tasks to complete (if not done yet)
+            $null = Wait-Job -Job $job1, $job2, $job3
+ 
+        # now they are done, get the results
+            $disktransferraw = Receive-Job -Job $job1
+            $diskreadraw = Receive-Job -Job $job2
+            $diskwriteraw = Receive-Job -Job $job3
+ 
+        # Convert to milliseconds		
+			$disktransfer=($disktransferraw*1000)
+			$diskread=($diskreadraw*1000)
+			$diskwrite=($diskwriteraw*1000)
+			
+		# discard the jobs
+        Remove-Job -Job $job1, $job2, $job3
+		
+        [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("DiskTransfer",$disktransfer)
+	    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("DiskRead",$diskread)
+        [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueDouble("DiskWrite",$diskwrite)
+}
+catch
+{
+ [ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

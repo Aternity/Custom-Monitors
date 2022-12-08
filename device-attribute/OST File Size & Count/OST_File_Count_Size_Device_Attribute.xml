@@ -1,0 +1,76 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 5" isGlobal="true" uiName="Custom Attribute 5"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="60000" invokeWhenNotReporting="true" reportingFrequency="60000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="60000"/>
+            <Parameter name="ScriptContext" value="User"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[try
+{
+    # Set new environment for Action Extensions Methods 
+    Add-Type -Path $env:STEELCENTRAL_ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll 
+    #Use of Environment Module for user Profile
+    $Localuserdata = "$env:LOCALAPPDATA"
+    #setting the OST file location
+    $OST_Location = "$Localuserdata\Microsoft\Outlook\"
+    #$OST_file_count = Get-ChildItem $OST_Location\*.ost -Include *.ost -recurse | Measure-Object -property length -sum | select count | Format-list
+    $OST_file_count = Get-ChildItem $OST_Location\*.ost -Include *.ost -recurse | Measure-Object -property length -sum | Select-Object -ExpandProperty count
+    $OST_file_size_bytes = Get-ChildItem $OST_Location\*.ost -Include *.ost -recurse | Measure-Object -property length -sum | Select-Object -ExpandProperty sum
+    $OST_file_size_GB = $OST_file_size_bytes * 0.000000001
+    $OST_file_size_GB_Rounded=[math]::Round(($OST_file_size_GB),2)
+    $OST_Count_Size = "OST File Count is " + $OST_file_count + " & size is " + $OST_file_size_GB_Rounded +" GB"
+    #Adding Values to Custom Attribute 5
+	[ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 5",$OST_Count_Size)
+}
+catch
+{
+    [ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+
+# SIG # Begin signature block
+# MIIFowYJKoZIhvcNAQcCoIIFlDCCBZACAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
+# gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU/VXnscGjf2tKQis0PRo1JVBn
+# 56SgggMsMIIDKDCCAhCgAwIBAgIQP4oc8pjOra5Mz+++0lBU7jANBgkqhkiG9w0B
+# AQsFADAsMSowKAYDVQQDDCFBdGVybml0eSBSZW1lZGlhdGlvbiBDb2RlIFNpZ25p
+# bmcwHhcNMjAxMDMwMDQxODIyWhcNMjExMDMwMDQzODIyWjAsMSowKAYDVQQDDCFB
+# dGVybml0eSBSZW1lZGlhdGlvbiBDb2RlIFNpZ25pbmcwggEiMA0GCSqGSIb3DQEB
+# AQUAA4IBDwAwggEKAoIBAQC53qdtgFZnzRUQtizXY+ndz8DITqhXEmG/P07ErdAX
+# lJ0zsHn0263WUmkGkdwzrNmMirBu6AmSHNajMFHxlmmkP+6a6PFQX+9wjspoPv5l
+# 1nUEyQGDCyZeLgyNySxP0N4K/FmzquQQ1nWIlwpdfLNVJ7c/5pSN+oioumIP8f4D
+# g1+4EzbWEPOSRKEtfH2Jz+WflEpIqtnL1/nOJbO8RBVlhSLlbbBrOVZJnesG/zNW
+# SjlR5DLJ/n9Q254c9uRKLagDfXsHudaV5jKJnYPEAFCEg3u3SYlG++tgcHksnHFg
+# PkpPumC+StLd4eIHcfZisq0Q1OQAtzScFH3+BWQACbtpAgMBAAGjRjBEMA4GA1Ud
+# DwEB/wQEAwIHgDATBgNVHSUEDDAKBggrBgEFBQcDAzAdBgNVHQ4EFgQUvgx+4s3S
+# 7xeSMzPapsJ/BVcg3/cwDQYJKoZIhvcNAQELBQADggEBAFJqxMvJRHimew8N5A3E
+# /kA4wPVGwWsx+WMhZPH2eeO1UshS5X2VzV0yYNeB4HPL6YgEQh51RUTrG1ivZyst
+# 9lD6H0oWIJJNV20UoUmEnjfdvjtlRwS/w18GhXyNv7P5V9CdudTLJdfZFN+DNR04
+# ogUjBTMXNM02Zqc5+E0Vt+XyXNFORLoOYvqsO6Bh9QUlam5o7dg8UmvZcvD9qa6h
+# +QmQ0oD11oWJ8sqGkNXvYYIdkguN5nJaIxP3Euam8rIvQeGft1Dc3qcg8w3xSRYQ
+# GGmVQw5NkJlgX9OJdHZ+a5uZsayyi5LPgxqXsHyXThQlgRhRzjQtP7UbMUSxcaNq
+# UfQxggHhMIIB3QIBATBAMCwxKjAoBgNVBAMMIUF0ZXJuaXR5IFJlbWVkaWF0aW9u
+# IENvZGUgU2lnbmluZwIQP4oc8pjOra5Mz+++0lBU7jAJBgUrDgMCGgUAoHgwGAYK
+# KwYBBAGCNwIBDDEKMAigAoAAoQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIB
+# BDAcBgorBgEEAYI3AgELMQ4wDAYKKwYBBAGCNwIBFTAjBgkqhkiG9w0BCQQxFgQU
+# NsgHdMvrzBHMFAdyiee32RKO268wDQYJKoZIhvcNAQEBBQAEggEAWAWb/s9QRzBB
+# 0HHpN9jXu5vTrQW5l02Y2SQXEv1+zUYEdzRIBifqdLSZDWo3mJtjDAsuSIHwP+Rt
+# z+HElObvTeGjICHZiy3/eTfV4+eqD2uJsNgtnE0ECnMlVarX8mSRDcbXlb68G7Fx
+# hzPttJ0rHjAPntOvCEnEseoHHPs/Re26QbcZJaA0fihHPqr/BJy3ZRq2I3cakUGJ
+# 8qvaWge50+ciwuRmwE/gzaP/HBPewOT2Cn3FvkF5wt4w6sB26m9IvIkCKSvPJ/di
+# qteQvORT7X8moWA+l5lP4jHtTacZ5d8MQYDlxwXzoKb66KCSpwQ8smVCmMaiOGii
+# 5fZGvimMww==
+# SIG # End signature block
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

@@ -1,0 +1,18 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="Dummy" enabled="true" maType="PluginMonitored1" sensitivity="1" uiName="dummy" usageValue="NotSpecified"/>
+        </monitoredAttributes>
+        <staticAttributes>
+            <staticAttribute agentPluginName="ProgId" isGlobal="true" uiName="Custom Attribute 1"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="RegistryReader" dllName="Com.Aternity.Agent.RegistryReaderPlugin.dll" frequency="60000"/>
+        <Parameters>
+            <Parameter name="RegistryBase" value="HKEY_CURRENT_USER"/>
+            <Parameter name="RegistrySubKey" value="SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice"/>
+            <Parameter name="RegistryName" value="ProgId"/>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

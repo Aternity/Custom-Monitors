@@ -1,0 +1,32 @@
+<GenericPlugin>
+	<Application>
+		<monitoredAttributes>
+			<monitoredAttribute agentPluginName="EventId" enabled="true" include_into_rd="true" maType="PluginMonitored1" sensitivity="5" uiName="EventOccurred" units="Number" usageValue="NotSpecified"/>
+		</monitoredAttributes>
+		<contextualAttributes>
+			<contextualAttribute agentPluginName="MemberSid" saType="PluginContextual1" uiName="MemberSid"/>
+			<contextualAttribute agentPluginName="TargetUserName" saType="PluginContextual2" uiName="TargetUserName"/>
+			<contextualAttribute agentPluginName="MemberName" saType="PluginContextual5" uiName="MemberName"/>
+			<contextualAttribute agentPluginName="SubjectUserName" saType="PluginContextual3" uiName="SubjectUserName"/>
+			<contextualAttribute agentPluginName="SubjectDomainName" saType="PluginContextual4" uiName="SubjectDomainName"/>
+		</contextualAttributes>
+	</Application>
+	<AgentConfiguration>
+		<Plugin alias="EventLog" dllName="Com.Aternity.Agent.EventLogPlugin.dll" frequency="60000"/>
+		<Parameters>
+			<Parameter name="logName.Matcher" value="RegexMatcher(Security)"/>
+			<Parameter name="EventID.Matcher" value="RangeMatcher(4732)"/>
+			<Parameter name="Message_1.Formatter" value="ParameterFormatter(1)"/>
+			<Parameter name="Message_2.Formatter" value="ParameterFormatter(2)"/>
+			<Parameter name="Message_2.Formatter" value="ParameterFormatter(0)"/>
+			<Parameter name="Message_2.Formatter" value="ParameterFormatter(6)"/>
+			<Parameter name="Message_2.Formatter" value="ParameterFormatter(7)"/>
+			<Parameter name="Message_1.Mapper" value="MemberSid.1"/>
+			<Parameter name="Message_2.Mapper" value="TargetUserName.1"/>
+			<Parameter name="Message_2.Mapper" value="MemberName.1"/>
+			<Parameter name="Message_2.Mapper" value="SubjectUserName.1"/>
+			<Parameter name="Message_2.Mapper" value="SubjectDomainName.1"/>
+			<Parameter name="EventID.Mapper" value="EventId.1"/>
+		</Parameters>
+	</AgentConfiguration>
+</GenericPlugin>

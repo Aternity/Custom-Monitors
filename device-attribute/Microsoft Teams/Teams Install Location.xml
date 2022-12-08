@@ -1,0 +1,42 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="EventOccurred" maType="PluginMonitored1" uiName="EventOccurred" units="Number"/>
+        </monitoredAttributes>
+        <contextualAttributes/>
+        <staticAttributes>
+            <staticAttribute agentPluginName="Custom Attribute 6" isGlobal="true" uiName="Custom Attribute 6"/>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="PowerShell" dllName="Com.Aternity.Agent.PowerShellPlugin.dll" frequency="3600000" invokeWhenNotReporting="true" reportingFrequency="3600000"/>
+        <Parameters>
+            <Parameter name="ScriptTimeout" value="10000"/>
+            <Parameter name="ScriptContext" value="User"/>
+            <Parameter name="Script" value="ScriptCdata">
+                <Script><![CDATA[try {
+    $profileLocation =  "$env:LOCALAPPDATA\Microsoft\Teams\current\teams.exe"
+    $systemwidelocation = Join-Path -Path ${env:ProgramFiles(x86)} -ChildPath "\Microsoft\Teams\current\teams.exe"
+  
+    Add-Type -Path $env:ATERNITY_AGENT_HOME\ActionExtensionsMethods.dll
+    
+    $result = ""
+    if (Test-Path -path $profileLocation) {
+        $result += "Profile "
+    }
+    if (Test-Path -path  $systemwidelocation) {
+        $result += "System-wide"
+    }
+
+    if ($result.Length -le 1) {$result = "unknown"}
+    [ActionExtensionsMethods.PowershellPluginMethods]::SetAttributeValueString("Custom Attribute 6",$result) 
+}
+catch {
+   [ActionExtensionsMethods.ActionExtensionsMethods]::SetFailed($_.Exception.Message)
+}
+
+]]></Script>
+            </Parameter>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

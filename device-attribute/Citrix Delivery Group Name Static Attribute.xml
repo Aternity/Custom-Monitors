@@ -1,0 +1,27 @@
+<GenericPlugin>
+    <Application>
+        <monitoredAttributes>
+            <monitoredAttribute agentPluginName="Dummy" enabled="true" maType="PluginMonitored1" sensitivity="1" uiName="dummy" usageValue="NotSpecified"/>
+        </monitoredAttributes>
+        <staticAttributes>
+            <staticAttribute agentPluginName="DesktopGroupName" uiName="Desktop Group Name">
+                <metaDataSet>
+                    <metaData value="49"/>
+                    <metaData value="2"/>
+                    <metaData value="50"/>
+                    <metaData value="6"/>
+                    <metaData value="45"/>
+                    <metaData value="46"/>
+                </metaDataSet>
+            </staticAttribute>
+        </staticAttributes>
+    </Application>
+    <AgentConfiguration>
+        <Plugin alias="RegistryReader" dllName="Com.Aternity.Agent.RegistryReaderPlugin.dll" frequency="3600000"/>
+        <Parameters>
+            <Parameter name="RegistryBase" value="HKEY_LOCAL_MACHINE"/>
+            <Parameter name="RegistrySubKey" value="SOFTWARE\Citrix\VirtualDesktopAgent\State"/>
+            <Parameter name="RegistryName" value="DesktopGroupName"/>
+        </Parameters>
+    </AgentConfiguration>
+</GenericPlugin>

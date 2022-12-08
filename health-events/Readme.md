@@ -50,3 +50,11 @@ Description of scripts or xml documents for retraival of custom data.
 	Description: Create a monitor under device health bucket to check whether there has been no recent reboot. 	
 	Technology:	XML
 	Frequency: 	case by case bases, based on your use case.  Suggested timeframe is daily (86400000 ms). Change the setting of frequency under <AgentConfiguration> parameter
+###	Last AD Connection Health Event	Powershell Script
+	Description: Check when device was last connected to AD from Windows Event Logs and raise a health event if connection was more than 7 day ago  	
+	Technology:	Powershell Script
+	Frequency: 	Ideally check every couple of hours
+###	Last AD Connection Health Event	Monitor XML
+	Description: Create a monitor under device health bucket to check for Last AD Connection  	
+	Technology:	XML
+	Frequency: 	Ideally check every couple of hours
